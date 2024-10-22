@@ -1,0 +1,133 @@
+# For more information: https://laravel.com/docs/sail
+version: "3"
+services:
+    laravel.test:
+        build:
+            context: ./vendor/laravel/sail/runtimes/8.3
+            dockerfile: Dockerfile
+            args:
+                WWWGROUP: "${WWWGROUP}"
+        image: sail-8.3/app
+        extra_hosts:
+            - "host.docker.internal:host-gateway"
+        ports:
+            - "${APP_PORT:-80}:80"
+        environment:
+            WWWUSER: "${WWWUSER}"
+            LARAVEL_SAIL: 1
+            XDEBUG_MODE: "${SAIL_XDEBUG_MODE:-off}"
+            XDEBUG_CONFIG: "${SAIL_XDEBUG_CONFIG:-client_host=host.docker.internal}"
+        volumes:
+            - ".:/var/www/html"
+        networks:
+            - sail
+        depends_on:
+            - mysql
+            - redis
+
+    mysql:
+        image: "mysql:8.0"
+        ports:
+            - "${FORWARD_DB_PORT:-3306}:3306"
+        environment:
+            MYSQL_ROOT_PASSWORD: "${DB_PASSWORD}"
+            MYSQL_ROOT_HOST: "%"
+            MYSQL_DATABASE: "${DB_DATABASE}"
+            MYSQL_USER: "${DB_USERNAME}"
+            MYSQL_PASSWORD: "${DB_PASSWORD}"
+            MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+        volumes:
+            - "sailmysql:/var/lib/mysql"
+            - "./vendor/laravel/sail/database/mysql/create-testing-database.sh:/docker-entrypoint-initdb.d/10-create-testing-database.sh"
+        networks:
+            - sail
+        healthcheck:
+            test: ["CMD", "mysqladmin", "ping", "-p${DB_PASSWORD}"]
+            retries: 3
+            timeout: 5s
+    redis:
+        image: "redis:alpine"
+        ports:
+            - "${FORWARD_REDIS_PORT:-6379}:6379"
+        volumes:
+            - "sailredis:/data"
+        networks:
+            - sail
+        healthcheck:
+            test: ["CMD", "redis-cli", "ping"]
+            retries: 3
+            timeout: 5s
+
+    mailhog:
+        image: "mailhog/mailhog:latest"
+        ports:
+            - "${FORWARD_MAILHOG_PORT:-1025}:1025"
+            - "${FORWARD_MAILHOG_DASHBOARD_PORT:-8025}:8025"
+        networks:
+            - sail
+
+    phpmyadmin:
+        image: phpmyadmin/phpmyadmin
+        ports:
+            - 8082:80
+        environment:
+            PMA_HOSTS: mysql
+        networks:
+            - sail
+
+    queue:
+        build:
+            context: ./docker
+            dockerfile: artisan.dockerfile
+            args:
+                WWWGROUP: "${WWWGROUP}"
+        # image: sail-8.3/app
+        restart: unless-stopped
+        container_name: queue
+        volumes:
+            - ./:/var/www/html:delegated
+            - ./docker/composer/packages/:/var/www/packages
+        depends_on:
+            - mysql
+        working_dir: /var/www/html
+        entrypoint: ["php", "/var/www/html/artisan", "queue:work"]
+        networks:
+            - sail
+        user: 1000:1000
+
+    laravel-scheduler-worker:
+        build:
+            context: ./docker
+            dockerfile: artisan.dockerfile
+            args:
+                WWWGROUP: "${WWWGROUP}"
+        # image: sail-8.3/app
+        restart: always
+        container_name: scheduler
+        depends_on:
+            - laravel.test
+        tty: true
+        environment:
+            APP_ENV: local
+            CONTAINER_ROLE: scheduler
+            CACHE_DRIVER: redis
+            SESSION_DRIVER: redis
+            QUEUE_DRIVER: redis
+            REDIS_HOST: redis
+        working_dir: /var/www/html
+        volumes:
+            - ./:/var/www/html:delegated
+            - ./docker/composer/packages/:/var/www/packages
+        entrypoint: ["php", "/var/www/html/artisan", "schedule:run"]
+        networks:
+            - sail
+        user: 1000:1000
+
+networks:
+    sail:
+        driver: bridge
+volumes:
+    sailmysql:
+        driver: local
+    sailredis:
+        driver: local
