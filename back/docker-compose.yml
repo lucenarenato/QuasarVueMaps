@@ -3,11 +3,11 @@ version: "3"
 services:
     laravel.test:
         build:
-            context: ./vendor/laravel/sail/runtimes/8.3
+            context: ./vendor/laravel/sail/runtimes/8.2
             dockerfile: Dockerfile
             args:
                 WWWGROUP: "${WWWGROUP}"
-        image: sail-8.3/app
+        image: sail-8.2/app
         extra_hosts:
             - "host.docker.internal:host-gateway"
         ports:
@@ -81,7 +81,7 @@ services:
             dockerfile: artisan.dockerfile
             args:
                 WWWGROUP: "${WWWGROUP}"
-        # image: sail-8.3/app
+        # image: sail-8.2/app
         restart: unless-stopped
         container_name: queue
         volumes:
@@ -101,7 +101,7 @@ services:
             dockerfile: artisan.dockerfile
             args:
                 WWWGROUP: "${WWWGROUP}"
-        # image: sail-8.3/app
+        # image: sail-8.2/app
         restart: always
         container_name: scheduler
         depends_on:
